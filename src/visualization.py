@@ -6,7 +6,7 @@ from umap import UMAP
 import seaborn as sns
 import torch.nn.functional as F
 
-def plot_embeddings(embeddings, cell_types, save_path=None, epoch=None):
+def plot_embeddings(embeddings, cell_types, save_path=None, title=None):
     """Plot TSNE visualization of embeddings colored by cell type.
     
     Args:
@@ -16,26 +16,30 @@ def plot_embeddings(embeddings, cell_types, save_path=None, epoch=None):
         epoch (int, optional): Epoch number
     """
     # Convert embeddings to numpy
-    embeddings_np = embeddings.detach().cpu().numpy()
+    embeddings = embeddings.detach().cpu().numpy()
     
-    # Compute TSNE
+    # Compute UMAP
     umap = UMAP(n_components=2, random_state=42)
-    embeddings_2d = umap.fit_transform(embeddings_np)
+    embeddings_2d = umap.fit_transform(embeddings)
 
     cell_type_indices = torch.argmax(cell_types, dim=1).cpu().numpy()
     
     # Create plot
-    plt.figure(figsize=(10, 8))
+    plt.figure(figsize=(8, 6))
     unique_cell_types = np.unique(cell_type_indices)
     for cell_type_idx in unique_cell_types:
         mask = (cell_type_indices == cell_type_idx)
         plt.scatter(embeddings_2d[mask, 0], embeddings_2d[mask, 1],
-                   alpha=0.6, label=f"Cell Type {cell_type_idx}")
-    plt.legend(title="Cell Type", loc="center left", bbox_to_anchor=(1, 0.5))
-    if epoch is not None:
-        plt.title(f"Cell Embeddings - Epoch {epoch}")
-    else:
-        plt.title("Cell Embeddings")
+                   alpha=0.6, label=f"Cell Type {cell_type_idx}", s=20, edgecolors="w", linewidth=0.1)
+
+    plt.legend(title="Cell Types", bbox_to_anchor=(1, 0.5), loc="center left", fontsize="medium")
+
+    # Add title and labels
+    if title is not None:
+        plt.title(title, fontsize="large")
+    plt.xlabel("UMAP 1", fontsize="large")
+    plt.ylabel("UMAP 2", fontsize="large")
+
     plt.tight_layout()
 
     if save_path:

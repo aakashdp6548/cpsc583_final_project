@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 from torch.nn import utils
 import json
+import random
 
 from models.gnn import InteractionGNN
 from models.loss import InteractionLoss
@@ -12,6 +13,16 @@ from visualization import plot_embeddings, plot_loss_curves, plot_expression_mat
 from data.graph import SpatialGraphConstructor
 from data.utils import create_combined_dataset, load_data
 from torch_geometric.data import Data
+
+
+def set_seed(seed):
+    """Set all random seeds for reproducibility."""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 
 def parse_args():
@@ -33,14 +44,21 @@ def parse_args():
     parser.add_argument("--temperature", type=float, default=0.1)
     parser.add_argument("--spatial_weight", type=float, default=1.0)
     parser.add_argument("--interaction_weight", type=float, default=1.0)
+    parser.add_argument("--patience", type=int, default=10)
+    parser.add_argument("--min_delta", type=float, default=1e-4)
 
     # Debugging arguments
     parser.add_argument("--plot_every", type=int, default=10)
+    parser.add_argument("--seed", type=int, default=42)
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
+    
+    # Set random seed right after parsing args
+    set_seed(args.seed)
+    
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     # Create output directory
@@ -63,7 +81,7 @@ def main():
     plot_spatial_coords(data["spatial_coords"], data["cell_types"], save_path=initial_save_path)
 
     # Initialize graph constructor
-    graph_constructor = SpatialGraphConstructor(k_neighbors=10)
+    graph_constructor = SpatialGraphConstructor(k_neighbors=10, seed=args.seed)
 
     # Create single graph
     data = Data(
@@ -90,8 +108,11 @@ def main():
     )
     optimizer = Adam(model.parameters(), lr=args.learning_rate)
 
-    # Initialize loss tracking
+    # Initialize loss tracking and early stopping variables
     losses = {}
+    best_loss = float('inf')
+    patience_counter = 0
+    best_model_state = None
 
     plot_every = args.plot_every if args.plot_every > 0 else args.num_epochs + 1
 
@@ -114,6 +135,7 @@ def main():
         loss.backward()
         optimizer.step()
         
+        # Track losses
         for key, val in loss_dict.items():
             if key not in losses:
                 losses[key] = []
@@ -124,22 +146,52 @@ def main():
         for key, val in loss_dict.items():
             print(f"  {key}: {val:.4f}")
         
+        # Early stopping check
+        current_loss = loss_dict['total_loss']
+        if current_loss < best_loss - args.min_delta:
+            best_loss = current_loss
+            patience_counter = 0
+            # Save best model state
+            best_model_state = {
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'loss': best_loss,
+            }
+        else:
+            patience_counter += 1
+            if patience_counter >= args.patience:
+                print(f"\nEarly stopping triggered after {epoch + 1} epochs!")
+                # Load best model state
+                model.load_state_dict(best_model_state['model_state_dict'])
+                break
+        
         # Visualize embeddings periodically
         if epoch % plot_every == 0:
-            # Plot and save embeddings
             save_path = output_dir / f'embeddings_epoch_{epoch}.png'
-            plot_embeddings(embeddings, data.cell_type, save_path=save_path, epoch=epoch)
+            title = f"{args.dataset} Embeddings - Epoch {epoch}"
+            plot_embeddings(embeddings, data.cell_type, save_path=save_path, title=title)
 
-        # Plot loss curves
-        plot_loss_curves(losses, save_path=output_dir / 'loss_curves.png')
+    # Plot loss curves
+    plot_loss_curves(losses, save_path=output_dir / 'loss_curves.png')
 
-    # Plot and save embeddings at end of training
-    save_path = output_dir / f'final_embeddings.png'
-    plot_embeddings(embeddings, data.cell_type, save_path=save_path)
+    # Get final embeddings using best model
+    model.eval()
+    with torch.no_grad():
+        final_embeddings, _ = model(data.x, data.edge_index, data.cell_type)
+
+    # Plot and save final embeddings
+    save_path = output_dir / f'embeddings_final.png'
+    title = f"{args.dataset} Embeddings - Final"
+    plot_embeddings(final_embeddings, data.cell_type, save_path=save_path, title=title)
 
     # Save final embeddings
     final_embeddings_path = output_dir / "final_embeddings.pt"
-    torch.save(embeddings, final_embeddings_path)
+    torch.save(final_embeddings.detach().cpu(), final_embeddings_path)
+
+    # Save best model state
+    model_save_path = output_dir / "best_model.pt"
+    torch.save(best_model_state, model_save_path)
 
     # Save losses
     losses_path = output_dir / "losses.json"

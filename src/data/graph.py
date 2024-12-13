@@ -1,7 +1,8 @@
 from torch_geometric.nn import radius_graph, knn_graph
+import numpy as np
 
 class SpatialGraphConstructor:
-    def __init__(self, k_neighbors=10):
+    def __init__(self, k_neighbors=10, seed=None):
         """Initialize graph constructor with knn initialization.
         
         Args:
@@ -9,6 +10,8 @@ class SpatialGraphConstructor:
             radius (float, optional): Radius for radius-based graph
         """
         self.k = k_neighbors
+        if seed is not None:
+            np.random.seed(seed)
     
     def build_graph(self, spatial_coords):
         """Build graph from spatial coordinates.
