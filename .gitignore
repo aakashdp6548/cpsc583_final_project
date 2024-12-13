@@ -2,11 +2,13 @@
 old_model/
 outputs/
 proposal/
+report/
 *.egg-info/
 data/
 training_output/
 .vscode
-
+results/
+plots/
 *.h5ad
 *.pyc
 test.ipynb

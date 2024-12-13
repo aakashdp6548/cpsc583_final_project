@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class InteractionLoss(nn.Module):
-    def __init__(self, temperature=0.1, spatial_weight=0.1, interaction_weight=1.0):
+    def __init__(self, temperature=0.1, contrastive_weight=1.0, spatial_weight=1.0, interaction_weight=1.0):
         """
         Loss function combining cell type contrastive loss with spatial regularization.
         
@@ -14,6 +14,7 @@ class InteractionLoss(nn.Module):
         """
         super().__init__()
         self.temperature = temperature
+        self.contrastive_weight = contrastive_weight
         self.spatial_weight = spatial_weight
         self.interaction_weight = interaction_weight
     
@@ -131,10 +132,14 @@ class InteractionLoss(nn.Module):
         contrastive_loss = self.compute_cell_type_loss(embeddings, cell_types)
         spatial_loss = self.compute_spatial_loss(embeddings, spatial_coords)
         interaction_loss = self.compute_interaction_loss(embeddings, gene_expression, gene_interactions)
-        total_loss = contrastive_loss + self.spatial_weight * spatial_loss + self.interaction_weight * interaction_loss
+        total_loss = (
+            self.contrastive_weight * contrastive_loss +
+            self.spatial_weight * spatial_loss +
+            self.interaction_weight * interaction_loss
+        )
 
         loss_dict = {
-            'contrastive_loss': contrastive_loss.item(),
+            'contrastive_loss': self.contrastive_weight * contrastive_loss.item(),
             'spatial_loss': self.spatial_weight * spatial_loss.item(),
             'interaction_loss': self.interaction_weight * interaction_loss.item(),
             'total_loss': total_loss.item()

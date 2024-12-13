@@ -42,6 +42,7 @@ def parse_args():
     parser.add_argument("--learning_rate", type=float, default=0.0005)
     parser.add_argument("--num_epochs", type=int, default=50)
     parser.add_argument("--temperature", type=float, default=0.1)
+    parser.add_argument("--contrastive_weight", type=float, default=1.0)
     parser.add_argument("--spatial_weight", type=float, default=1.0)
     parser.add_argument("--interaction_weight", type=float, default=1.0)
     parser.add_argument("--patience", type=int, default=10)
@@ -103,6 +104,7 @@ def main():
     # Initialize loss and optimizer
     criterion = InteractionLoss(
         temperature=args.temperature,
+        contrastive_weight=args.contrastive_weight,
         spatial_weight=args.spatial_weight,
         interaction_weight=args.interaction_weight
     )
