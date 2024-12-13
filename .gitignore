@@ -3,7 +3,8 @@ old_model/
 outputs/
 proposal/
 *.egg-info/
-
+data/
 
 *.h5ad
 *.pyc
+test.ipynb
