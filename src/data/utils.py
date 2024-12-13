@@ -1,4 +1,14 @@
 import torch
+import scanpy as sc
+import anndata
+import numpy as np
+import pandas as pd
+from scipy.sparse import csr_matrix
+
+DATASET_MAPPING = {
+    "lymph_node": "V1_Human_Lymph_Node",
+    "breast_cancer": "V1_Breast_Cancer_Block_A_Section_1",
+}
 
 def create_synthetic_data(num_cells=100, num_genes=1000, cell_type_idx=0, num_cell_types=3):
     """Create synthetic data for testing the model.
@@ -28,6 +38,7 @@ def create_synthetic_data(num_cells=100, num_genes=1000, cell_type_idx=0, num_ce
         "spatial_coords": spatial_coords,
         "cell_types": cell_types,
     }
+
 
 def create_combined_dataset(num_cells, num_genes, num_cell_types):
     """Create and combine synthetic datasets for multiple cell types.
@@ -61,3 +72,56 @@ def create_combined_dataset(num_cells, num_genes, num_cell_types):
         "spatial_coords": torch.cat(spatial_coords)[indices],
         "cell_types": torch.cat(cell_types)[indices],
     } 
+
+
+def construct_interaction_matrix(gene_ids, interactions):
+    """Construct an interaction matrix from a list of gene ids and a list of interactions.
+    
+    Args:
+        gene_ids (list): List of gene ids
+        interactions (pd.DataFrame): DataFrame of interactions
+
+    Returns:
+        scipy.sparse.csr_matrix: Interaction matrix
+    """
+    interaction_matrix = torch.zeros((len(gene_ids), len(gene_ids)))
+    for _, row in interactions.iterrows():
+        source_gene = row["ensembl_a"]
+        target_gene = row["ensembl_b"]
+        if source_gene in gene_ids and target_gene in gene_ids:
+            interaction_matrix[gene_ids.index(source_gene), gene_ids.index(target_gene)] = 1
+    return interaction_matrix
+
+
+def load_data(dataset_name, n_top_genes=2000):
+    if dataset_name not in DATASET_MAPPING:
+        raise ValueError(f"Dataset {dataset_name} not found")
+    adata_path = f"data/{DATASET_MAPPING[dataset_name]}/{dataset_name}.h5ad"
+    adata = anndata.read_h5ad(adata_path)
+
+    # Subset to highly variable genes
+    if n_top_genes is not None:
+        sc.pp.highly_variable_genes(adata, n_top_genes=n_top_genes, flavor='cell_ranger', subset=True)
+    
+    # Load gene interactions
+    interactions = pd.read_csv(f"data/gene_interactions.csv")
+    gene_ids = adata.var.gene_ids.tolist()  # Use ensembl ids
+    interaction_matrix = construct_interaction_matrix(gene_ids, interactions)
+
+    # Get cell type one-hot encoded
+    num_cell_types = len(adata.obs["leiden"].cat.categories)
+    cell_types = torch.zeros(len(adata.obs["leiden"]), num_cell_types)
+    cell_types[torch.arange(len(adata.obs["leiden"])), adata.obs["leiden"].cat.codes.values] = 1
+    
+    return {
+        "gene_expression": torch.tensor(adata.X.toarray()).float(),
+        "spatial_coords": torch.tensor(adata.obsm["spatial"]).float(),
+        "cell_types": cell_types.float(),
+        "interaction_matrix": interaction_matrix.float(),
+    }
+
+if __name__ == "__main__":
+    dataset = load_data("lymph_node")
+    print(dataset["gene_expression"].shape)
+    print(dataset["cell_types"].shape)
+    print(dataset["interaction_matrix"].shape)

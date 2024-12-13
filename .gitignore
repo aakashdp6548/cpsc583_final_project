@@ -4,6 +4,8 @@ outputs/
 proposal/
 *.egg-info/
 data/
+training_output/
+.vscode
 
 *.h5ad
 *.pyc

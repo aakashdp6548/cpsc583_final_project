@@ -2,23 +2,25 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
+from umap import UMAP
 import seaborn as sns
 import torch.nn.functional as F
 
-def plot_embeddings(embeddings, cell_types, save_path=None):
+def plot_embeddings(embeddings, cell_types, save_path=None, epoch=None):
     """Plot TSNE visualization of embeddings colored by cell type.
     
     Args:
         embeddings (torch.Tensor): [N x D] embedding matrix
         cell_types (torch.Tensor): [N,] cell type indices
         save_path (str, optional): Path to save the plot
+        epoch (int, optional): Epoch number
     """
     # Convert embeddings to numpy
     embeddings_np = embeddings.detach().cpu().numpy()
     
     # Compute TSNE
-    tsne = TSNE(n_components=2, random_state=42)
-    embeddings_2d = tsne.fit_transform(embeddings_np)
+    umap = UMAP(n_components=2, random_state=42)
+    embeddings_2d = umap.fit_transform(embeddings_np)
 
     cell_type_indices = torch.argmax(cell_types, dim=1).cpu().numpy()
     
@@ -30,7 +32,10 @@ def plot_embeddings(embeddings, cell_types, save_path=None):
         plt.scatter(embeddings_2d[mask, 0], embeddings_2d[mask, 1],
                    alpha=0.6, label=f"Cell Type {cell_type_idx}")
     plt.legend(title="Cell Type", loc="center left", bbox_to_anchor=(1, 0.5))
-    plt.title("TSNE Visualization of Cell Embeddings")
+    if epoch is not None:
+        plt.title(f"Cell Embeddings - Epoch {epoch}")
+    else:
+        plt.title("Cell Embeddings")
     plt.tight_layout()
 
     if save_path:
